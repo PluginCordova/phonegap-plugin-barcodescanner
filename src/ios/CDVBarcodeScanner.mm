@@ -44,6 +44,7 @@
 - (NSString*)isScanNotPossible;
 - (void)scan:(CDVInvokedUrlCommand*)command;
 - (void)encode:(CDVInvokedUrlCommand*)command;
+- (void)saveBarCodeToPhotoAlum:(CDVInvokedUrlCommand*)command;
 - (void)returnImage:(NSString*)filePath format:(NSString*)format callback:(NSString*)callback;
 - (void)returnSuccess:(NSString*)scannedText format:(NSString*)format cancelled:(BOOL)cancelled flipped:(BOOL)flipped callback:(NSString*)callback;
 - (void)returnError:(NSString*)message callback:(NSString*)callback;
@@ -124,8 +125,13 @@
 //------------------------------------------------------------------------------
 // plugin class
 //------------------------------------------------------------------------------
-@implementation CDVBarcodeScanner
+@interface CDVBarcodeScanner()
 
+@property (nonatomic, retain) NSString* callback;
+
+@end
+
+@implementation CDVBarcodeScanner
 //--------------------------------------------------------------------------
 - (NSString*)isScanNotPossible {
     NSString* result = nil;
@@ -231,6 +237,28 @@
     // queue [processor generateImage] to run on the event loop
     [processor performSelector:@selector(generateImage) withObject:nil afterDelay:0];
 }
+-(void)saveBarCodeToPhotoAlum:(CDVInvokedUrlCommand*)command{
+    if([command.arguments count] < 1)
+        [self returnError:@"Too few arguments!" callback:command.callbackId];
+    self.callback = command.callbackId;
+    NSString *imgUrl = command.arguments[0];
+    
+    
+
+    UIImage *image = [UIImage imageWithData:[NSData dataWithContentsOfURL:[NSURL URLWithString:imgUrl]]];
+    UIImageWriteToSavedPhotosAlbum(image, self, @selector(image:didFinishSavingWithError:contextInfo:), nil);
+}
+
+-(void)image:(UIImage *)image didFinishSavingWithError:(NSError *)error contextInfo:(void *)contextInfo{
+    if (error) {
+        
+        [self returnError:[NSString stringWithFormat:@"saveBardoce failed, error:%@",[error localizedDescription]] callback:self.callback];
+        
+    }
+    else{
+        [self returnSuccess:@"" callback:self.callback];
+    }
+}
 
 - (void)returnImage:(NSString*)filePath format:(NSString*)format callback:(NSString*)callback{
     NSMutableDictionary* resultDict = [[[NSMutableDictionary alloc] init] autorelease];
@@ -261,6 +289,14 @@
     [self.commandDelegate sendPluginResult:result callbackId:callback];
 }
 
+- (void)returnSuccess:(NSString*)message callback:(NSString*)callback {
+    CDVPluginResult* result = [CDVPluginResult
+                               resultWithStatus: CDVCommandStatus_OK
+                               messageAsString: message
+                               ];
+    
+    [self.commandDelegate sendPluginResult:result callbackId:callback];
+}
 //--------------------------------------------------------------------------
 - (void)returnError:(NSString*)message callback:(NSString*)callback {
     CDVPluginResult* result = [CDVPluginResult

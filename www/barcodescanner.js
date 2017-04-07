@@ -143,5 +143,24 @@ BarcodeScanner.prototype.scan = function (successCallback, errorCallback, config
             ]);
         };
 
+        BarcodeScanner.prototype.saveBarCodeToPhotoAlum = function (imgUrl, successCallback, errorCallback) {
+            if (errorCallback == null) {
+                errorCallback = function () {
+                };
+            }
+
+            if (typeof errorCallback != "function") {
+                console.log("BarcodeScanner.saveBarCodeToPhotoAlum failure: failure parameter not a function");
+                return;
+            }
+
+            if (typeof successCallback != "function") {
+                console.log("BarcodeScanner.saveBarCodeToPhotoAlum failure: success callback parameter must be a function");
+                return;
+            }
+
+            exec(successCallback, errorCallback, 'BarcodeScanner', 'saveBarCodeToPhotoAlum', [imgUrl]);
+        };
+
         var barcodeScanner = new BarcodeScanner();
         module.exports = barcodeScanner;
