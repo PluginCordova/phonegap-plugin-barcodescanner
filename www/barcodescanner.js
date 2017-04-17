@@ -161,6 +161,26 @@ BarcodeScanner.prototype.scan = function (successCallback, errorCallback, config
 
             exec(successCallback, errorCallback, 'BarcodeScanner', 'saveBarCodeToPhotoAlum', [imgUrl]);
         };
+        BarcodeScanner.prototype.decodeImage = function (filePath, successCallback, errorCallback) {
+            if (errorCallback == null) {
+                errorCallback = function () {
+                };
+            }
+
+            if (typeof errorCallback != "function") {
+                console.log("BarcodeScanner.encode failure: failure parameter not a function");
+                return;
+            }
+
+            if (typeof successCallback != "function") {
+                console.log("BarcodeScanner.encode failure: success callback parameter must be a function");
+                return;
+            }
+
+            exec(successCallback, errorCallback, 'BarcodeScanner', 'decodeImage', [
+                {"filePath": filePath}
+            ]);
+        };
 
         var barcodeScanner = new BarcodeScanner();
         module.exports = barcodeScanner;

@@ -36,6 +36,7 @@ import com.google.zxing.client.android.Intents;
 public class BarcodeScanner extends CordovaPlugin {
     public static final int REQUEST_CODE = 0x0ba7c0de;
 
+    private static final String DECODEIMAGE = "decodeImage";
     private static final String SCAN = "scan";
     private static final String ENCODE = "encode";
     private static final String CANCELLED = "cancelled";
@@ -119,12 +120,64 @@ public class BarcodeScanner extends CordovaPlugin {
             } else {
               scan(args);
             }
-        } else {
+        } else if (action.equals(DECODEIMAGE)) {
+            JSONObject obj = args.optJSONObject(0);
+            if (obj != null) {
+                String filePath = obj.optString(FILEPATH);
+
+                if (filePath == null) {
+                    callbackContext.error("User did not specify filepath to decode");
+                    return true;
+                }
+
+                decodeImage(filePath);
+            } else {
+                callbackContext.error("User did not specify data to encode");
+                return true;
+            }
+        }
+        else
+        {
             return false;
         }
         return true;
     }
-
+    public void decodeImage(final String filePath) {
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    Bitmap bitmap = BitmapFactory.decodeFile(filePath);
+                    if (bitmap == null)
+                    {
+                        Log.e("##RDBG", "uri is not a bitmap");
+                        return;
+                    }
+                    int width = bitmap.getWidth(), height = bitmap.getHeight();
+                    int[] pixels = new int[width * height];
+                    bitmap.getPixels(pixels, 0, width, 0, 0, width, height);
+                    bitmap.recycle();
+                    bitmap = null;
+                    RGBLuminanceSource source = new RGBLuminanceSource(width, height, pixels);
+                    BinaryBitmap bBitmap = new BinaryBitmap(new HybridBinarizer(source));
+                    MultiFormatReader reader = new MultiFormatReader();
+                    try
+                    {
+                        Result result = reader.decode(bBitmap);
+                        Log.i("##RDBG", result.getText());
+                        callbackContext.success(result.getText());
+                    }
+                    catch (NotFoundException e)
+                    {
+                        Log.e("##RDBG", "decode exception", e);
+                    }
+                }
+                catch (Exception e) {
+                    Log.e("##RDBG", "decodeImage failed, exception: " + e);
+                }
+            }
+        }).start();
+    }
     /**
      * Starts an intent to scan and decode a barcode.
      */

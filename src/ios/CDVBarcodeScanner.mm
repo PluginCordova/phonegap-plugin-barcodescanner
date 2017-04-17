@@ -45,6 +45,7 @@
 - (void)scan:(CDVInvokedUrlCommand*)command;
 - (void)encode:(CDVInvokedUrlCommand*)command;
 - (void)saveBarCodeToPhotoAlum:(CDVInvokedUrlCommand*)command;
+- (void)decodeImage:(CDVInvokedUrlCommand*)command;
 - (void)returnImage:(NSString*)filePath format:(NSString*)format callback:(NSString*)callback;
 - (void)returnSuccess:(NSString*)scannedText format:(NSString*)format cancelled:(BOOL)cancelled flipped:(BOOL)flipped callback:(NSString*)callback;
 - (void)returnError:(NSString*)message callback:(NSString*)callback;
@@ -102,6 +103,27 @@
 - (void)generateImage;
 @end
 
+//------------------------------------------------------------------------------
+// Qr decoder processor
+//------------------------------------------------------------------------------
+@interface CDVdqrProcessor: NSObject
+{
+    UIImage *image;
+    CGRect cropRect;
+    UIImage *subsetImage;
+    unsigned char *subsetData;
+    size_t subsetWidth;
+    size_t subsetHeight;
+    size_t subsetBytesPerRow;
+}
+@property (nonatomic, retain) CDVBarcodeScanner*          plugin;
+@property (nonatomic, retain) NSString*                   callback;
+@property (nonatomic, retain) NSString*                   filePath;
+
+- (id)initWithPlugin:(CDVBarcodeScanner*)plugin callback:(NSString*)callback filePath:(NSString*)filePath;
+- (void)getInfoWithImage;
+
+@end
 //------------------------------------------------------------------------------
 // view controller for the ui
 //------------------------------------------------------------------------------
@@ -237,6 +259,26 @@
     // queue [processor generateImage] to run on the event loop
     [processor performSelector:@selector(generateImage) withObject:nil afterDelay:0];
 }
+
+//--------------------------------------------------------------------------
+- (void)decodeImage:(CDVInvokedUrlCommand*)command {
+    if([command.arguments count] < 1)
+        [self returnError:@"Too few arguments!" callback:command.callbackId];
+    NSString*       callback;
+    callback = command.callbackId;
+
+    CDVdqrProcessor* processor;
+    
+    processor = [[CDVdqrProcessor alloc] initWithPlugin:self callback:callback filePath:command.arguments[0][@"filePath"]];
+    
+    
+    [processor retain];
+    [processor retain];
+    [processor retain];
+    // queue [processor generateImage] to run on the event loop
+    [processor performSelector:@selector(getInfoWithImage) withObject:nil afterDelay:0];
+}
+
 -(void)saveBarCodeToPhotoAlum:(CDVInvokedUrlCommand*)command{
     if([command.arguments count] < 1)
         [self returnError:@"Too few arguments!" callback:command.callbackId];
@@ -883,6 +925,151 @@ parentViewController:(UIViewController*)parentViewController
 }
 @end
 
+//------------------------------------------------------------------------------
+// qr decoder processor
+//------------------------------------------------------------------------------
+@implementation CDVdqrProcessor
+@synthesize plugin               = _plugin;
+@synthesize callback             = _callback;
+@synthesize filePath       = _filePath;
+
+-(id)initWithPlugin:(CDVBarcodeScanner *)plugin callback:(NSString *)callback filePath:(NSString *)filePath{
+    
+    self = [super init];
+    if (!self) return self;
+    
+    self.plugin          = plugin;
+    self.callback        = callback;
+    self.filePath  = filePath;
+    
+    return self;
+}
+
+
+//--------------------------------------------------------------------------
+- (void)dealloc {
+    self.plugin = nil;
+    self.callback = nil;
+    self.filePath = nil;
+    
+    [super dealloc];
+}
+//--------------------------------------------------------------------------
+-(void)getInfoWithImage{
+    
+    image = [UIImage imageWithContentsOfFile:self.filePath];
+    
+    cropRect = CGRectMake(0.0f, 0.0f, image.size.width, image.size.height);
+    
+    [self prepareSubset];
+    
+    using namespace zxing;
+    
+    Ref<LuminanceSource> source
+    (new GreyscaleLuminanceSource(subsetData, subsetBytesPerRow, subsetHeight, 0, 0, subsetWidth, subsetHeight));
+    Ref<Binarizer> binarizer (new HybridBinarizer(source));
+#ifdef DEBUG
+    NSLog(@"created GreyscaleLuminanceSource(%p,%lu,%lu,%d,%d,%lu,%lu)",
+          subsetData, subsetBytesPerRow, subsetHeight, 0, 0, subsetWidth, subsetHeight);
+#endif
+    
+    Ref<BinaryBitmap>      bitmap            (new BinaryBitmap(binarizer));
+    Ref<MultiFormatReader> reader            (new MultiFormatReader());
+    zxing::DecodeHints hints;
+    Ref<Result>            result            (reader->decode(bitmap, hints));
+    Ref<String>            resultText        (result->getText());
+    const char* cString      = resultText->getText().c_str();
+    NSString*   resultString = [[NSString alloc] initWithCString:cString encoding:NSUTF8StringEncoding];
+    if (resultString) {
+        
+        NSLog(@"getInfoWithImage == %@",resultString);
+        
+        [self.plugin returnSuccess:resultString callback:self.callback];
+        
+        
+    } else {
+        
+        [self.plugin returnError:@"getInfoWithImageWithError" callback:self.callback];
+        
+    }
+}
+
+
+#define SUBSET_SIZE 360
+
+- (void) prepareSubset {
+    CGSize size = [image size];
+#ifdef DEBUG
+    NSLog(@"decoding: image is (%.1f x %.1f), cropRect is (%.1f,%.1f)x(%.1f,%.1f)", size.width, size.height,
+          cropRect.origin.x, cropRect.origin.y, cropRect.size.width, cropRect.size.height);
+#endif
+    float scale = fminf(1.0f, fmaxf(SUBSET_SIZE / cropRect.size.width, SUBSET_SIZE / cropRect.size.height));
+    CGPoint offset = CGPointMake(-cropRect.origin.x, -cropRect.origin.y);
+#ifdef DEBUG
+    NSLog(@"  offset = (%.1f, %.1f), scale = %.3f", offset.x, offset.y, scale);
+#endif
+    
+    subsetWidth = cropRect.size.width * scale;
+    subsetHeight = cropRect.size.height * scale;
+    
+    subsetBytesPerRow = ((subsetWidth + 0xf) >> 4) << 4;
+#ifdef DEBUG
+    NSLog(@"decoding: image to decode is (%lu x %lu) (%lu bytes/row)", subsetWidth, subsetHeight, subsetBytesPerRow);
+#endif
+    
+    subsetData = (unsigned char *)malloc(subsetBytesPerRow * subsetHeight);
+#ifdef DEBUG
+    NSLog(@"allocated %lu bytes of memory", subsetBytesPerRow * subsetHeight);
+#endif
+    
+    CGColorSpaceRef grayColorSpace = CGColorSpaceCreateDeviceGray();
+    
+    CGContextRef ctx =
+    CGBitmapContextCreate(subsetData, subsetWidth, subsetHeight,
+                          8, subsetBytesPerRow, grayColorSpace,
+                          kCGImageAlphaNone);
+    CGColorSpaceRelease(grayColorSpace);
+    CGContextSetInterpolationQuality(ctx, kCGInterpolationNone);
+    CGContextSetAllowsAntialiasing(ctx, false);
+    // adjust the coordinate system
+    CGContextTranslateCTM(ctx, 0.0, subsetHeight);
+    CGContextScaleCTM(ctx, 1.0, -1.0);
+    
+#ifdef DEBUG
+    NSLog(@"created %dx%d bitmap context", subsetWidth, subsetHeight);
+#endif
+    
+    UIGraphicsPushContext(ctx);
+    CGRect rect = CGRectMake(offset.x * scale, offset.y * scale, scale * size.width, scale * size.height);
+#ifdef DEBUG
+    NSLog(@"rect for image = (%.1f,%.1f)x(%.1f,%.1f)", rect.origin.x, rect.origin.y, rect.size.width, rect.size.height);
+#endif
+    [image drawInRect:rect];
+    UIGraphicsPopContext();
+    
+#ifdef DEBUG
+    NSLog(@"drew image into %d(%d)x%d  bitmap context", subsetWidth, subsetBytesPerRow, subsetHeight);
+#endif
+    CGContextFlush(ctx);
+#ifdef DEBUG
+    NSLog(@"flushed context");
+#endif
+    
+    CGImageRef subsetImageRef = CGBitmapContextCreateImage(ctx);
+#ifdef DEBUG
+    NSLog(@"created CGImage from context");
+#endif
+    
+    subsetImage = [UIImage imageWithCGImage:subsetImageRef];
+    CGImageRelease(subsetImageRef);
+    
+    CGContextRelease(ctx);
+#ifdef DEBUG
+    NSLog(@"released context");  
+#endif
+}
+
+@end
 //------------------------------------------------------------------------------
 // view controller for the ui
 //------------------------------------------------------------------------------
