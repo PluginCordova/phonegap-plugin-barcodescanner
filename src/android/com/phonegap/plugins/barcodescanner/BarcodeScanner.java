@@ -18,6 +18,8 @@ import android.content.Intent;
 import android.os.Bundle;
 import android.util.Log;
 import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 
 import org.apache.cordova.CordovaPlugin;
 import org.apache.cordova.CallbackContext;
@@ -27,6 +29,12 @@ import org.apache.cordova.PermissionHelper;
 import com.google.zxing.client.android.CaptureActivity;
 import com.google.zxing.client.android.encode.EncodeActivity;
 import com.google.zxing.client.android.Intents;
+import com.google.zxing.BinaryBitmap;
+import com.google.zxing.MultiFormatReader;
+import com.google.zxing.NotFoundException;
+import com.google.zxing.RGBLuminanceSource;
+import com.google.zxing.Result;
+import com.google.zxing.common.HybridBinarizer;
 
 /**
  * This calls out to the ZXing barcode reader and returns the result.
@@ -56,6 +64,8 @@ public class BarcodeScanner extends CordovaPlugin {
     private static final String EMAIL_TYPE = "EMAIL_TYPE";
     private static final String PHONE_TYPE = "PHONE_TYPE";
     private static final String SMS_TYPE = "SMS_TYPE";
+    private static final String FILEPATH = "filePath";
+    private static final String B64IMAGE = "b64Image";
 
     private static final String LOG_TAG = "BarcodeScanner";
 
