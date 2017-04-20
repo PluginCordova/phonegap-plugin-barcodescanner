@@ -48,6 +48,7 @@
 - (void)decodeImage:(CDVInvokedUrlCommand*)command;
 - (void)returnImage:(NSString*)filePath format:(NSString*)format callback:(NSString*)callback;
 - (void)returnSuccess:(NSString*)scannedText format:(NSString*)format cancelled:(BOOL)cancelled flipped:(BOOL)flipped callback:(NSString*)callback;
+-(void)returnSuccess:(NSString*)scannedText format:(NSString*)format cancelled:(BOOL)cancelled flipped:(BOOL)flipped alum:(BOOL)alumTapped callback:(NSString*)callback ;
 - (void)returnError:(NSString*)message callback:(NSString*)callback;
 @end
 
@@ -81,6 +82,7 @@
 - (void)barcodeScanFailed:(NSString*)message;
 - (void)barcodeScanCancelled;
 - (void)openDialog;
+- (void)alumTapped;
 - (NSString*)setUpCaptureSession;
 - (void)captureOutput:(AVCaptureOutput*)captureOutput didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer fromConnection:(AVCaptureConnection*)connection;
 - (NSString*)formatStringFrom:(zxing::BarcodeFormat)format;
@@ -134,6 +136,8 @@
 @property (nonatomic, retain) IBOutlet UIView* overlayView;
 // unsafe_unretained is equivalent to assign - used to prevent retain cycles in the property below
 @property (nonatomic, unsafe_unretained) id orientationDelegate;
+
+@property (nonatomic, retain) NSLayoutConstraint *heightConstraint;
 
 - (id)initWithProcessor:(CDVbcsProcessor*)processor alternateOverlay:(NSString *)alternateXib;
 - (void)startCapturing;
@@ -331,6 +335,24 @@
     [self.commandDelegate sendPluginResult:result callbackId:callback];
 }
 
+- (void)returnSuccess:(NSString*)scannedText format:(NSString*)format cancelled:(BOOL)cancelled flipped:(BOOL)flipped alum:(BOOL)alumTapped callback:(NSString*)callback{
+    NSNumber* cancelledNumber = @(cancelled ? 1 : 0);
+    NSNumber* alumTappedNumber = @(alumTapped ? 1 : 0);
+    
+    NSMutableDictionary* resultDict = [[NSMutableDictionary new] autorelease];
+    resultDict[@"text"] = scannedText;
+    resultDict[@"format"] = format;
+    resultDict[@"cancelled"] = cancelledNumber;
+    resultDict[@"alumTapped"] = alumTappedNumber;
+    
+    CDVPluginResult* result = [CDVPluginResult
+                               resultWithStatus: CDVCommandStatus_OK
+                               messageAsDictionary: resultDict
+                               ];
+    [self.commandDelegate sendPluginResult:result callbackId:callback];
+}
+
+
 - (void)returnSuccess:(NSString*)message callback:(NSString*)callback {
     CDVPluginResult* result = [CDVPluginResult
                                resultWithStatus: CDVCommandStatus_OK
@@ -505,6 +527,15 @@ parentViewController:(UIViewController*)parentViewController
 - (void)barcodeScanCancelled {
     [self barcodeScanDone:^{
         [self.plugin returnSuccess:@"" format:@"" cancelled:TRUE flipped:self.isFlipped callback:self.callback];
+    }];
+    if (self.isFlipped) {
+        self.isFlipped = NO;
+    }
+}
+
+-(void)alumTapped{
+    [self barcodeScanDone:^{
+        [self.plugin returnSuccess:@"" format:@"" cancelled:false flipped:self.isFlipped alum:true callback:self.callback];
     }];
     if (self.isFlipped) {
         self.isFlipped = NO;
@@ -1162,6 +1193,10 @@ parentViewController:(UIViewController*)parentViewController
   [self.processor performSelector:@selector(toggleTorch) withObject:nil afterDelay:0];
 }
 
+-(void)alumBarButtonTapped:(id)sender{
+    [self.processor performSelector:@selector(alumTapped) withObject:nil afterDelay:0];
+}
+
 //--------------------------------------------------------------------------
 - (UIView *)buildOverlayViewFromXib
 {
@@ -1190,48 +1225,103 @@ parentViewController:(UIViewController*)parentViewController
     overlayView.autoresizesSubviews = YES;
     overlayView.autoresizingMask    = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     overlayView.opaque              = NO;
+    
+    UINavigationBar *navigationBar = [[UINavigationBar alloc] init];
+    //navigationBar.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleTopMargin;
+    
+    UINavigationItem *navigationItem = [[UINavigationItem alloc] init];
+//    
+//    [navigationBar setTitleTextAttributes:[NSDictionary dictionaryWithObjectsAndKeys:
+//                                          
+//                                          [UIFont fontWithName:@"Helvetica" size:15.0], NSFontAttributeName,
+//                                          
+//                                          nil]];
+    
+    UIBarButtonItem *alumBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:NSLocalizedString(@"相册",nil)  style:UIBarButtonItemStylePlain target:self action:@selector(alumBarButtonTapped:)];
+//    [alumBarButtonItem setTitleTextAttributes:[NSDictionary dictionaryWithObjectsAndKeys:
+//                                               
+//                                               [UIFont fontWithName:@"Helvetica" size:15.0], NSFontAttributeName,
+//                                               
+//                                               nil]
+//     
+//                                     forState:UIControlStateNormal];
+    UIBarButtonItem *cancelBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:NSLocalizedString(@"取消",nil)  style:UIBarButtonItemStylePlain target:self action:@selector(cancelButtonPressed:)];
+//    [cancelBarButtonItem setTitleTextAttributes:[NSDictionary dictionaryWithObjectsAndKeys:
+//                                                
+//                                                [UIFont fontWithName:@"Helvetica" size:15.0], NSFontAttributeName,
+//                                                
+//                                                nil]
+//     
+//                                      forState:UIControlStateNormal];
+    navigationItem.title = @"二维码";
+    
+    navigationItem.leftBarButtonItem = cancelBarButtonItem;
+    navigationItem.rightBarButtonItem = alumBarButtonItem;
+    [navigationBar setItems:@[navigationItem]];
+    
+    [overlayView addSubview:navigationBar];
+    //使用Auto Layout约束，禁止将Autoresizing Mask转换为约束
+    [navigationBar setTranslatesAutoresizingMaskIntoConstraints:NO];
+    
+    NSLayoutConstraint *contraintleft = [NSLayoutConstraint constraintWithItem:navigationBar attribute:NSLayoutAttributeLeft relatedBy:NSLayoutRelationEqual toItem:overlayView attribute:NSLayoutAttributeLeft multiplier:1.0 constant:0.0];
+    
+    NSLayoutConstraint *contraintright = [NSLayoutConstraint constraintWithItem:navigationBar attribute:NSLayoutAttributeRight relatedBy:NSLayoutRelationEqual toItem:overlayView attribute:NSLayoutAttributeRight multiplier:1.0 constant:0.0];
+    
+    NSLayoutConstraint *contrainttop = [NSLayoutConstraint constraintWithItem:navigationBar attribute:NSLayoutAttributeTop relatedBy:NSLayoutRelationEqual toItem:overlayView attribute:NSLayoutAttributeTop multiplier:1.0 constant:0.0];
+    
+    CGFloat statusBarHeight = [UIApplication sharedApplication].statusBarFrame.size.height;
+    _heightConstraint = [NSLayoutConstraint constraintWithItem:navigationBar attribute:NSLayoutAttributeHeight relatedBy:NSLayoutRelationEqual toItem:nil attribute:NSLayoutAttributeHeight multiplier:1.0 constant:statusBarHeight + 40];
+    
+    NSArray *array = @[contraintleft, contraintright, contrainttop, _heightConstraint];
+    [overlayView addConstraints:array];
+    
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(statusBarFrameDidChange:) name:UIApplicationDidChangeStatusBarFrameNotification object:nil];
 
     UIToolbar* toolbar = [[UIToolbar alloc] init];
     toolbar.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleTopMargin;
-
-    id cancelButton = [[[UIBarButtonItem alloc]
-                       initWithBarButtonSystemItem:UIBarButtonSystemItemCancel
-                       target:(id)self
-                       action:@selector(cancelButtonPressed:)
-                       ] autorelease];
-
-
+    
+//    id cancelButton = [[[UIBarButtonItem alloc]
+//                        initWithBarButtonSystemItem:UIBarButtonSystemItemCancel
+//                        target:(id)self
+//                        action:@selector(cancelButtonPressed:)
+//                        ] autorelease];
+    
+    
     id flexSpace = [[[UIBarButtonItem alloc]
-                    initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace
-                    target:nil
-                    action:nil
-                    ] autorelease];
-
+                     initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace
+                     target:nil
+                     action:nil
+                     ] autorelease];
+    
     id flipCamera = [[[UIBarButtonItem alloc]
-                       initWithBarButtonSystemItem:UIBarButtonSystemItemCamera
-                       target:(id)self
-                       action:@selector(flipCameraButtonPressed:)
-                       ] autorelease];
-
+                      initWithBarButtonSystemItem:UIBarButtonSystemItemCamera
+                      target:(id)self
+                      action:@selector(flipCameraButtonPressed:)
+                      ] autorelease];
+    
     NSMutableArray *items;
-
+    
 #if USE_SHUTTER
     id shutterButton = [[[UIBarButtonItem alloc]
-                        initWithBarButtonSystemItem:UIBarButtonSystemItemCamera
-                        target:(id)self
-                        action:@selector(shutterButtonPressed)
-                        ] autorelease];
-
+                         initWithBarButtonSystemItem:UIBarButtonSystemItemCamera
+                         target:(id)self
+                         action:@selector(shutterButtonPressed)
+                         ] autorelease];
+    
     if (_processor.isShowFlipCameraButton) {
-      items = [NSMutableArray arrayWithObjects:flexSpace, cancelButton, flexSpace, flipCamera, shutterButton, nil];
+        //items = [NSMutableArray arrayWithObjects:flexSpace, cancelButton, flexSpace, flipCamera, shutterButton, nil];
+        items = [NSMutableArray arrayWithObjects: flexSpace, flipCamera, shutterButton, nil];
     } else {
-      items = [NSMutableArray arrayWithObjects:flexSpace, cancelButton, flexSpace, shutterButton, nil];
+        //items = [NSMutableArray arrayWithObjects:flexSpace, cancelButton, flexSpace, shutterButton, nil];
+        items = [NSMutableArray arrayWithObjects:flexSpace, shutterButton, nil];
     }
 #else
     if (_processor.isShowFlipCameraButton) {
-      items = [@[flexSpace, cancelButton, flexSpace, flipCamera] mutableCopy];
+        //items = [@[flexSpace, cancelButton, flexSpace, flipCamera] mutableCopy];
+        items = [@[flexSpace, flexSpace, flipCamera] mutableCopy];
     } else {
-      items = [@[flexSpace, cancelButton, flexSpace] mutableCopy];
+        //items = [@[flexSpace, cancelButton, flexSpace] mutableCopy];
+        items = [@[flexSpace, flexSpace] mutableCopy];
     }
 #endif
 
@@ -1338,6 +1428,19 @@ parentViewController:(UIViewController*)parentViewController
     UIGraphicsEndImageContext();
     return result;
 }
+
+- (void)statusBarFrameDidChange:(NSNotification*)notification
+{
+    CGFloat statusBarHeight = [UIApplication sharedApplication].statusBarFrame.size.height;
+    
+    self.heightConstraint.constant = 60 - statusBarHeight;
+    NSLog(@"%f",statusBarHeight);
+}
+
+//-(BOOL)prefersStatusBarHidden
+//{
+//    return YES;
+//}
 
 #pragma mark CDVBarcodeScannerOrientationDelegate
 
