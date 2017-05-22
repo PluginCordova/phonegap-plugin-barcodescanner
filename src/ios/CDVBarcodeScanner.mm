@@ -987,36 +987,57 @@ parentViewController:(UIViewController*)parentViewController
 }
 //--------------------------------------------------------------------------
 -(void)getInfoWithImage{
+
     try{
         image = [UIImage imageWithContentsOfFile:self.filePath];
         
-        cropRect = CGRectMake(0.0f, 0.0f, image.size.width, image.size.height);
+        NSString *content = @"" ;
+        NSData *imageData = UIImagePNGRepresentation(image);
+        CIImage *ciImage = [CIImage imageWithData:imageData];
         
-        [self prepareSubset];
+        //创建探测器
+        CIDetector *detector = [CIDetector detectorOfType:CIDetectorTypeQRCode context:nil options:@{CIDetectorAccuracy: CIDetectorAccuracyLow}];
+        NSArray *feature = [detector featuresInImage:ciImage];
         
-        using namespace zxing;
-        
-        Ref<LuminanceSource> source
-        (new GreyscaleLuminanceSource(subsetData, subsetBytesPerRow, subsetHeight, 0, 0, subsetWidth, subsetHeight));
-        Ref<Binarizer> binarizer (new HybridBinarizer(source));
-#ifdef DEBUG
-        NSLog(@"created GreyscaleLuminanceSource(%p,%lu,%lu,%d,%d,%lu,%lu)",
-              subsetData, subsetBytesPerRow, subsetHeight, 0, 0, subsetWidth, subsetHeight);
-#endif
-        
-        Ref<BinaryBitmap>      bitmap            (new BinaryBitmap(binarizer));
-        Ref<MultiFormatReader> reader            (new MultiFormatReader());
-        zxing::DecodeHints hints;
-        Ref<Result>            result            (reader->decode(bitmap, hints));
-        Ref<String>            resultText        (result->getText());
-        const char* cString      = resultText->getText().c_str();
-        NSString*   resultString = [[NSString alloc] initWithCString:cString encoding:NSUTF8StringEncoding];
-        if (resultString) {
-            NSLog(@"getInfoWithImage == %@",resultString);
-            [self.plugin returnSuccess:resultString callback:self.callback];
+        //取出探测到的数据
+        for (CIQRCodeFeature *result in feature) {
+            content = result.messageString;
+        }
+        if (content) {
+            NSLog(@"getInfoWithImage == %@",content);
+            [self.plugin returnSuccess:content callback:self.callback];
         } else {
             [self.plugin returnError:@"getInfoWithImageWithError" callback:self.callback];
         }
+        
+        
+//        cropRect = CGRectMake(0.0f, 0.0f, image.size.width, image.size.height);
+//        
+//        [self prepareSubset];
+//        
+//        using namespace zxing;
+//        
+//        Ref<LuminanceSource> source
+//        (new GreyscaleLuminanceSource(subsetData, subsetBytesPerRow, subsetHeight, 0, 0, subsetWidth, subsetHeight));
+//        Ref<Binarizer> binarizer (new HybridBinarizer(source));
+//#ifdef DEBUG
+//        NSLog(@"created GreyscaleLuminanceSource(%p,%lu,%lu,%d,%d,%lu,%lu)",
+//              subsetData, subsetBytesPerRow, subsetHeight, 0, 0, subsetWidth, subsetHeight);
+//#endif
+//        
+//        Ref<BinaryBitmap>      bitmap            (new BinaryBitmap(binarizer));
+//        Ref<MultiFormatReader> reader            (new MultiFormatReader());
+//        zxing::DecodeHints hints;
+//        Ref<Result>            result            (reader->decode(bitmap, hints));
+//        Ref<String>            resultText        (result->getText());
+//        const char* cString      = resultText->getText().c_str();
+//        NSString*   resultString = [[NSString alloc] initWithCString:cString encoding:NSUTF8StringEncoding];
+//        if (resultString) {
+//            NSLog(@"getInfoWithImage == %@",resultString);
+//            [self.plugin returnSuccess:resultString callback:self.callback];
+//        } else {
+//            [self.plugin returnError:@"getInfoWithImageWithError" callback:self.callback];
+//        }
     }
     catch(...){
         NSLog(@"decoding: unknown exception");
