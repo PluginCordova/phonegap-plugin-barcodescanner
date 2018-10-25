@@ -3,6 +3,8 @@ def minSdk = Math.max(DEFAULT_MIN_SDK_VERSION, cdvHelpers.getConfigPreference('a
 if (cdvMinSdkVersion == null || Integer.parseInt(cdvMinSdkVersion) < minSdk ) {
     ext.cdvMinSdkVersion = minSdk;
 }
+ext.cdvCompileSdkVersion = 28;
+ext.cdvBuildToolsVersion = "28.0.3";
 
 repositories{
     maven {
@@ -20,8 +22,6 @@ dependencies {
 }
 
 android {
-    compileSdkVersion 28
-    buildToolsVersion "28.0.3"
     packagingOptions {
         exclude 'META-INF/NOTICE'
         exclude 'META-INF/LICENSE'
